@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+
+{% block title %}电压扫描结果 - Chip Test HUB{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title-row">
+    <h1 class="page-title">
+      <svg class="icon" style="width:20px;height:20px;margin-right:8px;"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bolt"></use></svg>
+      电压扫描结果分析
+    </h1>
+    <div class="page-meta">
+      <button class="btn" id="refreshBtn" type="button">🔄 刷新</button>
+    </div>
+  </div>
+</div>
+
+<div class="results-page">
+  <div class="results-file-selector">
+    <label class="field">
+      <span class="field-label">选择测试文件</span>
+      <select class="input" id="fileSelect">
+        <option value="">-- 请选择 CSV 文件 --</option>
+        {% for f in files %}
+        <option value="{{ f.name }}">{{ f.name }} ({{ f.size }} KB)</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <div class="results-charts" id="chartsContainer" style="display:none;">
+    <div class="chart-card">
+      <div class="chart-title">VBAT 电压 vs 设置电压</div>
+      <div class="chart-wrapper">
+        <canvas id="vbatChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">芯片温度 vs 设置电压</div>
+      <div class="chart-wrapper">
+        <canvas id="tempChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">VBUCK 电压 vs 设置电压</div>
+      <div class="chart-wrapper">
+        <canvas id="vbuckChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="results-stats" id="statsContainer" style="display:none;">
+    <div class="stat-card">
+      <div class="stat-label">测试点数</div>
+      <div class="stat-value" id="statCount">-</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">电压范围</div>
+      <div class="stat-value" id="statVoltageRange">-</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">平均温度</div>
+      <div class="stat-value" id="statAvgTemp">-</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">最高温度</div>
+      <div class="stat-value" id="statMaxTemp">-</div>
+    </div>
+  </div>
+
+  <div class="results-table-container" id="tableContainer" style="display:none;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>序号</th>
+          <th>时间</th>
+          <th>设置电压(V)</th>
+          <th>NAD</th>
+          <th>VBAT(V)</th>
+          <th>VBUCK(V)</th>
+          <th>温度(°C)</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+.results-page { padding: 20px; }
+.results-file-selector {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.results-file-selector .field { max-width: 500px; }
+.results-charts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.chart-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.chart-card:first-child { grid-column: span 2; }
+.chart-wrapper { height: 280px; position: relative; }
+.chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+.results-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  text-align: center;
+}
+.stat-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.stat-value { font-size: 20px; font-weight: 600; color: var(--text); }
+.results-table-container {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: auto;
+  max-height: 400px;
+}
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table th, .data-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+.data-table th { background: rgba(127, 127, 127, 0.06); font-weight: 600; color: var(--muted); }
+.data-table tr:hover { background: rgba(127, 127, 127, 0.04); }
+</style>
+
+<script>
+(function() {
+  let charts = {};
+  
+  function getChartColors() {
+    const style = getComputedStyle(document.documentElement);
+    return {
+      text: style.getPropertyValue('--text').trim() || '#333',
+      muted: style.getPropertyValue('--muted').trim() || '#777',
+      border: style.getPropertyValue('--border').trim() || '#ddd'
+    };
+  }
+
+  function parseCSV(csvText) {
+    const lines = csvText.trim().split('\n');
+    if (lines.length < 2) return [];
+    
+    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    const data = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+      if (values.length >= headers.length) {
+        const row = {};
+        headers.forEach((h, idx) => {
+          const val = values[idx];
+          row[h] = (val === '' || isNaN(val)) ? val : parseFloat(val);
+        });
+        data.push(row);
+      }
+    }
+    return data;
+  }
+
+  function updateCharts(data) {
+    const colors = getChartColors();
+    
+    const setVols = data.map(d => d.set_vbat);
+    const vbatVals = data.map(d => d.vbat_v);
+    const tempVals = data.map(d => d.chiptemp);
+    const vbuckVals = data.map(d => d.vbuck_v);
+    
+    if (charts.vbat) charts.vbat.destroy();
+    if (charts.temp) charts.temp.destroy();
+    if (charts.vbuck) charts.vbuck.destroy();
+    
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: colors.text } }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: '设置电压 (V)', color: colors.muted },
+          ticks: { color: colors.muted },
+          grid: { color: colors.border }
+        },
+        y: {
+          ticks: { color: colors.muted },
+          grid: { color: colors.border }
+        }
+      }
+    };
+    
+    charts.vbat = new Chart(document.getElementById('vbatChart'), {
+      type: 'line',
+      data: {
+        labels: setVols,
+        datasets: [{
+          label: 'VBAT (V)',
+          data: vbatVals,
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.1,
+          fill: true
+        }]
+      },
+      options: chartOptions
+    });
+    
+    charts.temp = new Chart(document.getElementById('tempChart'), {
+      type: 'line',
+      data: {
+        labels: setVols,
+        datasets: [{
+          label: '温度 (°C)',
+          data: tempVals,
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.1,
+          fill: true
+        }]
+      },
+      options: chartOptions
+    });
+    
+    charts.vbuck = new Chart(document.getElementById('vbuckChart'), {
+      type: 'line',
+      data: {
+        labels: setVols,
+        datasets: [{
+          label: 'VBUCK (V)',
+          data: vbuckVals,
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.1,
+          fill: true
+        }]
+      },
+      options: chartOptions
+    });
+  }
+
+  function updateStats(data) {
+    document.getElementById('statCount').textContent = data.length;
+    
+    const setVols = data.map(d => d.set_vbat).filter(v => typeof v === 'number');
+    if (setVols.length > 0) {
+      const minV = Math.min(...setVols);
+      const maxV = Math.max(...setVols);
+      document.getElementById('statVoltageRange').textContent = minV + '-' + maxV + 'V';
+    }
+    
+    const temps = data.map(d => d.chiptemp).filter(t => typeof t === 'number');
+    if (temps.length > 0) {
+      const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+      const maxTemp = Math.max(...temps);
+      document.getElementById('statAvgTemp').textContent = avgTemp.toFixed(1) + '°C';
+      document.getElementById('statMaxTemp').textContent = maxTemp.toFixed(1) + '°C';
+    }
+  }
+
+  function updateTable(data) {
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+    
+    data.slice(0, 100).forEach(function(row, idx) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + (idx + 1) + '</td>' +
+        '<td>' + (row.time || '-') + '</td>' +
+        '<td>' + (row.set_vbat || '-') + '</td>' +
+        '<td>' + (row.nad || '-') + '</td>' +
+        '<td>' + (row.vbat_v || '-') + '</td>' +
+        '<td>' + (row.vbuck_v || '-') + '</td>' +
+        '<td>' + (row.chiptemp || '-') + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function loadFile(filename) {
+    try {
+      const resp = await fetch('/test/results/' + encodeURIComponent(filename));
+      if (!resp.ok) throw new Error('Failed to load file');
+      const text = await resp.text();
+      const data = parseCSV(text);
+      
+      if (data.length === 0) {
+        alert('无法解析文件数据');
+        return;
+      }
+      
+      document.getElementById('chartsContainer').style.display = 'grid';
+      document.getElementById('statsContainer').style.display = 'grid';
+      document.getElementById('tableContainer').style.display = 'block';
+      
+      updateCharts(data);
+      updateStats(data);
+      updateTable(data);
+    } catch (e) {
+      console.error('加载文件失败:', e);
+      alert('加载文件失败: ' + e.message);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    const fileSelect = document.getElementById('fileSelect');
+    const refreshBtn = document.getElementById('refreshBtn');
+    
+    if (fileSelect) {
+      fileSelect.addEventListener('change', function() {
+        if (this.value) {
+          loadFile(this.value);
+        }
+      });
+    }
+    
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function() {
+        window.location.reload();
+      });
+    }
+  });
+})();
+</script>
+{% endblock %}

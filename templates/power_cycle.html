@@ -1,0 +1,976 @@
+{% extends "base.html" %}
+
+{% block title %}上下电耐受测试 - Chip Test HUB{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title-row">
+    <h1 class="page-title">
+      <svg class="icon" style="width:20px;height:20px;margin-right:8px;"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bolt"></use></svg>
+      上下电耐受测试
+    </h1>
+    <div class="page-meta">
+      <span class="chip chip--accent">电源循环测试</span>
+    </div>
+  </div>
+  <p class="page-desc">对ITECH电源进行循环开关控制，用于验证芯片在反复上下电后BIN是否被改变、功能是否正常。</p>
+</div>
+
+<div class="power-cycle-page">
+  <!-- 左侧配置区 -->
+  <div class="power-cycle-config">
+
+    <!-- 1. 设备配置 -->
+    <div class="config-card">
+      <div class="config-title">设备配置</div>
+      <div class="config-form">
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">电源(VISA)</span>
+            <select class="input" id="powerAddress">
+              <option value="">加载中...</option>
+            </select>
+          </label>
+          <label class="field" style="align-self: flex-end;">
+            <button class="btn" id="refreshPortsBtn" type="button">🔄 刷新</button>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 测试参数 -->
+    <div class="config-card">
+      <div class="config-title">测试参数</div>
+      <div class="config-form">
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">目标电压(V)</span>
+            <input class="input" id="targetVoltage" type="number" value="12" step="0.1" min="0" max="24" />
+          </label>
+          <label class="field">
+            <span class="field-label">开关次数</span>
+            <input class="input" id="cycleCount" type="number" value="10" step="1" min="1" max="1000" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">开启时间(s)</span>
+            <input class="input" id="onTime" type="number" value="2" step="0.1" min="0.1" max="60" />
+          </label>
+          <label class="field">
+            <span class="field-label">关闭时间(s)</span>
+            <input class="input" id="offTime" type="number" value="1" step="0.1" min="0.1" max="60" />
+          </label>
+        </div>
+        <div class="form-row preset-row">
+          <span class="field-label">快速预设:</span>
+          <button class="btn btn--sm preset-btn" data-cycles="5" data-on="1" data-off="1">5次(1s开/关)</button>
+          <button class="btn btn--sm preset-btn" data-cycles="10" data-on="2" data-off="1">10次(2s/1s)</button>
+          <button class="btn btn--sm preset-btn" data-cycles="20" data-on="2" data-off="1">20次(2s/1s)</button>
+          <button class="btn btn--sm preset-btn" data-cycles="50" data-on="3" data-off="2">50次(3s/2s)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. BIN 对比与烧录（可折叠，可选） -->
+    <div class="config-card">
+      <div class="config-title config-title--collapsible" id="binCardToggle" role="button" tabindex="0">
+        <span>BIN 对比与烧录（可选）</span>
+        <svg class="icon icon--sm" id="binCardArrow" aria-hidden="true" style="margin-left:auto;transition:transform 0.2s"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-chevron-down"></use></svg>
+      </div>
+      <div class="config-form" id="binCardBody" style="display:none;">
+        <!-- J-Link 连接状态 -->
+        <div class="jlink-status" id="jlinkStatus">
+          <span class="jlink-dot" id="jlinkDot"></span>
+          <span id="jlinkStatusText">检测 J-Link 连接...</span>
+        </div>
+
+        <!-- 芯片选择 -->
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">芯片型号</span>
+            <select class="input" id="chipSelect">
+              <option value="">加载中...</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">固件文件</span>
+            <input class="input" id="firmwarePath" type="text" placeholder="test_results/xxx.bin" />
+          </label>
+        </div>
+
+        <!-- 读取 BIN 区 -->
+        <div class="bin-section">
+          <div class="bin-section-title">读取 Flash / BIN 对比</div>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">起始地址</span>
+              <input class="input" id="flashAddr" type="text" value="0x00000000" />
+            </label>
+            <label class="field">
+              <span class="field-label">读取长度</span>
+              <input class="input" id="flashSize" type="text" value="0x20000" />
+            </label>
+          </div>
+          <div class="bin-row">
+            <div class="bin-file">
+              <span class="bin-label">参考 BIN（上下电前）</span>
+              <input class="input" id="binBeforePath" type="text" placeholder="自动生成或手动填写" />
+            </div>
+            <button class="btn btn--sm" id="readBinBeforeBtn" type="button">读取并保存</button>
+          </div>
+          <div class="bin-row">
+            <div class="bin-file">
+              <span class="bin-label">当前 BIN（上下电后）</span>
+              <input class="input" id="binAfterPath" type="text" placeholder="自动生成或手动填写" />
+            </div>
+            <button class="btn btn--sm" id="readBinAfterBtn" type="button">读取并保存</button>
+          </div>
+          <div class="bin-compare-row">
+            <button class="btn btn--primary" id="compareBinBtn" type="button">对比 BIN</button>
+          </div>
+        </div>
+
+        <!-- 烧录固件 -->
+        <div class="bin-section" style="margin-top:16px;">
+          <div class="bin-section-title">烧录固件（可选）</div>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">固件路径 (.bin)</span>
+              <input class="input" id="firmwareFilePath" type="text" placeholder="例: C:/firmware/iND23226_app.bin" />
+            </label>
+          </div>
+          <button class="btn btn--primary" id="burnFirmwareBtn" type="button">烧录固件</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. 开始/停止按钮 -->
+    <div class="config-actions">
+      <button class="btn btn--primary btn--lg" id="startCycleBtn" type="button">开始测试</button>
+      <button class="btn btn--lg" id="stopCycleBtn" type="button" disabled>停止</button>
+    </div>
+
+    <!-- 进度条 -->
+    <div class="card-progress">
+      <div class="progress-bar" aria-label="测试进度">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div class="progress-text" id="progressText">Idle</div>
+    </div>
+  </div>
+
+  <!-- 右侧结果区 -->
+  <div class="power-cycle-results">
+    <div class="results-panel">
+      <div class="panel-title">
+        <span>实时数据</span>
+        <button class="btn btn--sm" id="clearDataBtn" type="button">🗑️ 清空</button>
+      </div>
+      <div class="panel-body" id="dataPanel">
+        <div class="data-grid" id="dataGrid">
+          <div class="data-item">
+            <div class="data-label">当前周期</div>
+            <div class="data-value" id="currentCycle">-</div>
+          </div>
+          <div class="data-item">
+            <div class="data-label">总周期数</div>
+            <div class="data-value" id="totalCycles">-</div>
+          </div>
+          <div class="data-item">
+            <div class="data-label">当前状态</div>
+            <div class="data-value data-value--status" id="currentStatus">-</div>
+          </div>
+          <div class="data-item">
+            <div class="data-label">目标电压</div>
+            <div class="data-value" id="currentVoltage">-</div>
+          </div>
+          <div class="data-item">
+            <div class="data-label">实测电压</div>
+            <div class="data-value" id="measuredVoltage">-</div>
+          </div>
+          <div class="data-item">
+            <div class="data-label">已用时间</div>
+            <div class="data-value" id="elapsedTime">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BIN 对比结果面板 -->
+    <div class="results-panel" id="binResultPanel" style="display:none;">
+      <div class="panel-title">
+        <span>BIN 对比结果</span>
+        <button class="btn btn--sm" id="downloadBinCsvBtn" type="button">📥 下载 CSV</button>
+      </div>
+      <div class="panel-body" id="binResultBody">
+        <div id="binResultSummary"></div>
+        <div id="binResultDiff" class="diff-table-wrap"></div>
+      </div>
+    </div>
+
+    <div class="results-panel">
+      <div class="panel-title">
+        <span>测试日志</span>
+      </div>
+      <div class="panel-body" id="logBox">
+        <div class="log-line">HUB 已启动。请配置设备参数后点击"开始测试"。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.power-cycle-page {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 24px;
+  padding: 20px;
+}
+.power-cycle-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.config-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.config-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--text);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.config-title--collapsible {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+}
+.config-title--collapsible:hover { opacity: 0.8; }
+.config-form .form-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+.config-form .field { flex: 1; }
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.preset-btn { padding: 4px 12px; font-size: 12px; }
+.config-actions {
+  display: flex;
+  gap: 12px;
+}
+.config-actions .btn--lg {
+  flex: 1;
+  padding: 14px 20px;
+  font-size: 16px;
+}
+.power-cycle-results {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.results-panel {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.results-panel .panel-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 14px;
+}
+.results-panel .panel-body {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+}
+.data-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.data-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  text-align: center;
+}
+.data-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.data-value { font-size: 24px; font-weight: 700; color: var(--text); }
+.data-value--status { color: #22c55e; }
+.data-value--status.off { color: #ef4444; }
+
+/* BIN 对比区域 */
+.jlink-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.jlink-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #888;
+  flex-shrink: 0;
+}
+.jlink-dot.ok { background: #22c55e; }
+.jlink-dot.err { background: #ef4444; }
+.bin-section {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.bin-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.bin-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.bin-file { flex: 1; }
+.bin-file .bin-label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+.bin-file .input { width: 100%; }
+.bin-compare-row { margin-top: 10px; }
+.diff-table-wrap { overflow-x: auto; }
+#binResultDiff { overflow-x: auto; }
+
+/* Beyond Compare 风格十六进制对比视图 */
+.hex-diff {
+  font-family: var(--mono);
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  max-height: 480px;
+  overflow-y: auto;
+}
+.hex-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.hex-table th {
+  background: var(--bg);
+  border-bottom: 2px solid var(--border);
+  padding: 5px 10px;
+  font-weight: 700;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.hex-table th.col-addr { width: 60px; }
+.hex-table th.col-before,
+.hex-table th.col-after { width: 280px; }
+.hex-table td {
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.hex-table tr:last-child td { border-bottom: none; }
+.hex-table tr.row-diff td { background: rgba(239, 68, 68, 0.05); }
+.hex-table tr.row-diff td:first-child { border-left: 3px solid #ef4444; }
+.hex-table .addr { color: var(--muted); font-size: 10px; }
+.hex-table .hex-bytes { letter-spacing: 0.02em; }
+.hex-table .byte { display: inline-block; width: 18px; text-align: center; }
+.hex-table .byte.same { color: var(--muted); }
+.hex-table .byte.diff-before { color: #fca5a5; font-weight: 700; }
+.hex-table .byte.diff-after { color: #ef4444; font-weight: 700; }
+.hex-table .byte.empty { color: var(--muted); opacity: 0.4; }
+.hex-more {
+  padding: 8px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.diff-summary {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.diff-summary.ok { background: #dcfce7; color: #166534; }
+.diff-summary.fail { background: #fee2e2; color: #991b1b; }
+
+@media (max-width: 1024px) {
+  .power-cycle-page { grid-template-columns: 1fr; }
+  .data-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+
+<script>
+(function() {
+  // ── 基础 DOM ───────────────────────────────────────────────────
+  const logBox = document.getElementById("logBox");
+  const powerAddress = document.getElementById("powerAddress");
+  const refreshPortsBtn = document.getElementById("refreshPortsBtn");
+  const targetVoltage = document.getElementById("targetVoltage");
+  const cycleCount = document.getElementById("cycleCount");
+  const onTime = document.getElementById("onTime");
+  const offTime = document.getElementById("offTime");
+  const startCycleBtn = document.getElementById("startCycleBtn");
+  const stopCycleBtn = document.getElementById("stopCycleBtn");
+  const progressFill = document.getElementById("progressFill");
+  const progressText = document.getElementById("progressText");
+  const clearDataBtn = document.getElementById("clearDataBtn");
+
+  // ── 状态 ─────────────────────────────────────────────────────
+  let currentTaskId = null;
+  let startTime = null;
+  let timerInterval = null;
+  let statusPollTimer = null;
+  let isPowerCycleRunning = false;
+
+  // BIN 相关
+  let binBeforePath = null;  // 参考 BIN 路径
+  let lastBinCsvPath = null; // 最后生成的对比 CSV 路径
+
+  // ── 日志 ───────────────────────────────────────────────────────
+  function addLog(line) {
+    if (!logBox) return;
+    const div = document.createElement("div");
+    div.className = "log-line";
+    div.textContent = line;
+    logBox.appendChild(div);
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  // ── 进度 ───────────────────────────────────────────────────────
+  function setProgress(p, msg) {
+    const pct = Math.max(0, Math.min(100, Math.round(p * 100)));
+    if (progressFill) progressFill.style.width = pct + "%";
+    if (progressText) progressText.textContent = msg || pct + "%";
+  }
+
+  // ── POST 辅助 ─────────────────────────────────────────────────
+  async function postJson(url, data) {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data || {}),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok || json.success === false) {
+      throw new Error(json.message || "HTTP " + resp.status);
+    }
+    return json;
+  }
+
+  async function getJson(url) {
+    const resp = await fetch(url);
+    return resp.json().catch(() => ({}));
+  }
+
+  // ── VISA 设备加载 ─────────────────────────────────────────────
+  async function loadVisaDevices() {
+    try {
+      const resp = await getJson("/test/visa");
+      if (powerAddress) {
+        powerAddress.innerHTML = "";
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "-- 选择电源 --";
+        powerAddress.appendChild(opt);
+        if (resp.success && resp.devices?.length > 0) {
+          for (const d of resp.devices) {
+            const o = document.createElement("option");
+            o.value = d.resource;
+            o.textContent = d.resource;
+            powerAddress.appendChild(o);
+          }
+          addLog("[INFO] 已加载 " + resp.devices.length + " 个 VISA 设备");
+        } else {
+          const o = document.createElement("option");
+          o.value = "";
+          o.textContent = "未找到 VISA 设备";
+          powerAddress.appendChild(o);
+        }
+      }
+    } catch (e) {
+      addLog("[ERROR] 加载设备列表失败: " + (e && e.message || e));
+    }
+  }
+
+  // ── J-Link 检测 ────────────────────────────────────────────────
+  async function checkJLink() {
+    const dot = document.getElementById("jlinkDot");
+    const text = document.getElementById("jlinkStatusText");
+    const chip = document.getElementById("chipSelect")?.value || "iND23226";
+    dot.className = "jlink-dot";
+    text.textContent = "检测 J-Link 连接...";
+    try {
+      const json = await getJson("/test/jlink/check?chip=" + encodeURIComponent(chip));
+      if (json.success) {
+        dot.className = "jlink-dot ok";
+        text.textContent = "J-Link 已连接 ✓";
+        addLog("[INFO] J-Link 连接正常");
+      } else {
+        dot.className = "jlink-dot err";
+        text.textContent = "J-Link 未连接 ✗";
+        addLog("[WARN] J-Link 未连接: " + json.message);
+      }
+    } catch (e) {
+      dot.className = "jlink-dot err";
+      text.textContent = "J-Link 检测失败 ✗";
+      addLog("[ERROR] J-Link 检测失败: " + (e && e.message || e));
+    }
+  }
+
+  // ── 加载芯片列表 ───────────────────────────────────────────────
+  async function loadChipList() {
+    try {
+      const json = await getJson("/test/jlink/list-chips");
+      const sel = document.getElementById("chipSelect");
+      if (sel && json.success) {
+        sel.innerHTML = "";
+        for (const c of json.chips || []) {
+          const o = document.createElement("option");
+          o.value = c;
+          o.textContent = c;
+          if (c === "iND23226") o.selected = true;
+          sel.appendChild(o);
+        }
+      }
+    } catch (e) {
+      addLog("[ERROR] 加载芯片列表失败: " + (e && e.message || e));
+    }
+  }
+
+  // ── 读取 Flash ────────────────────────────────────────────────
+  async function readFlash(targetInputId, label) {
+    const chip = document.getElementById("chipSelect")?.value || "iND23226";
+    const addrInput = document.getElementById("flashAddr")?.value || "0x00000000";
+    const sizeInput = document.getElementById("flashSize")?.value || "0x20000";
+    const addr = parseInt(addrInput, 16);
+    const size = parseInt(sizeInput, 16);
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const autoPath = "test_results/" + chip + "_" + label + "_" + ts + ".bin";
+    const input = document.getElementById(targetInputId);
+    const outPath = input?.value?.trim() || autoPath;
+    if (input) input.value = outPath;
+
+    addLog("[INFO] 正在读取 " + label + " Flash... (" + outPath + ")");
+    try {
+      const json = await postJson("/test/jlink/read-flash", {
+        chip_name: chip,
+        output_path: outPath,
+        addr: addr,
+        size: size,
+      });
+      if (json.success) {
+        addLog("[OK] " + label + " Flash 读取成功: " + json.file_path);
+        return json.file_path;
+      } else {
+        addLog("[ERROR] " + label + " Flash 读取失败: " + json.message);
+        return null;
+      }
+    } catch (e) {
+      addLog("[ERROR] " + label + " Flash 读取失败: " + (e && e.message || e));
+      return null;
+    }
+  }
+
+  // ── 烧录固件 ──────────────────────────────────────────────────
+  async function burnFirmware() {
+    const chip = document.getElementById("chipSelect")?.value || "iND23226";
+    const path = document.getElementById("firmwareFilePath")?.value?.trim();
+    if (!path) {
+      addLog("[ERROR] 请填写固件文件路径");
+      return;
+    }
+    addLog("[INFO] 正在烧录固件到 " + chip + "...");
+    try {
+      const json = await postJson("/test/jlink/burn", {
+        chip_name: chip,
+        firmware_path: path,
+      });
+      if (json.success) {
+        addLog("[OK] 烧录成功: " + json.message);
+      } else {
+        addLog("[ERROR] 烧录失败: " + json.message);
+      }
+    } catch (e) {
+      addLog("[ERROR] 烧录失败: " + (e && e.message || e));
+    }
+  }
+
+  // ── BIN 对比 ────────────────────────────────────────────────────
+  async function compareBin() {
+    const before = document.getElementById("binBeforePath")?.value?.trim();
+    const after = document.getElementById("binAfterPath")?.value?.trim();
+    if (!before || !after) {
+      addLog("[ERROR] 请先读取上下电前后的 BIN 文件路径");
+      return;
+    }
+    addLog("[INFO] 正在对比 BIN...");
+    try {
+      const json = await postJson("/test/jlink/compare", {
+        file_before: before,
+        file_after: after,
+      });
+      if (!json.success) {
+        addLog("[ERROR] BIN 对比失败: " + json.message);
+        return;
+      }
+
+      lastBinCsvPath = json.csv_path;
+      const panel = document.getElementById("binResultPanel");
+      const summary = document.getElementById("binResultSummary");
+      const diffDiv = document.getElementById("binResultDiff");
+
+      if (panel) panel.style.display = "";
+
+      if (json.identical) {
+        summary.innerHTML = '<div class="diff-summary ok">✓ BIN 完全相同，无任何变化（' + json.total_bytes.toLocaleString() + ' 字节）</div>';
+        addLog("[OK] BIN 对比完成：无差异，PASS");
+      } else {
+        summary.innerHTML = '<div class="diff-summary fail">✗ BIN 有 ' + json.diff_count.toLocaleString() + ' 处变化（' + json.total_bytes.toLocaleString() + ' 字节）</div>';
+        addLog("[WARN] BIN 对比完成：有 " + json.diff_count.toLocaleString() + " 处变化，FAIL");
+      }
+
+      // Beyond Compare 风格十六进制对比视图（始终展示）
+      // 使用 table 布局：偏移 | Before | After
+      let html = '<div class="hex-diff"><table class="hex-table"><thead><tr>';
+      html += '<th class="col-addr">偏移</th>';
+      html += '<th class="col-before">Before</th>';
+      html += '<th class="col-after">After</th>';
+      html += '</tr></thead><tbody>';
+
+      for (const row of json.rows || []) {
+        const isDiff = row.has_diff;
+
+        // Before 列字节
+        let beforeTd = '';
+        for (let i = 0; i < 16; i++) {
+          const b = row.before[i];
+          if (b !== null) {
+            const a = row.after[i];
+            const isChanged = isDiff && b !== a;
+            beforeTd += '<span class="byte ' + (isChanged ? 'diff-before' : 'same') + '">' + b + '</span>';
+          } else {
+            beforeTd += '<span class="byte empty">--</span>';
+          }
+        }
+
+        // After 列字节
+        let afterTd = '';
+        for (let i = 0; i < 16; i++) {
+          const a = row.after[i];
+          if (a !== null) {
+            const b = row.before[i];
+            const isChanged = isDiff && b !== a;
+            afterTd += '<span class="byte ' + (isChanged ? 'diff-after' : 'same') + '">' + a + '</span>';
+          } else {
+            afterTd += '<span class="byte empty">--</span>';
+          }
+        }
+
+        html += '<tr class="' + (isDiff ? 'row-diff' : '') + '">';
+        html += '<td class="addr">' + row.addr + '</td>';
+        html += '<td class="hex-bytes">' + beforeTd + '</td>';
+        html += '<td class="hex-bytes">' + afterTd + '</td>';
+        html += '</tr>';
+      }
+
+      if (json.has_more) {
+        html += '</tbody></table><div class="hex-more">⋯ 还有更多内容，请下载 CSV 查看完整结果</div></div>';
+      } else {
+        html += '</tbody></table></div>';
+      }
+      diffDiv.innerHTML = html;
+    } catch (e) {
+      addLog("[ERROR] BIN 对比失败: " + (e && e.message || e));
+    }
+  }
+
+  // ── 按钮状态 ─────────────────────────────────────────────────
+  function enableStartButton() {
+    if (startCycleBtn) startCycleBtn.disabled = false;
+    if (stopCycleBtn) stopCycleBtn.disabled = true;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    stopStatusPolling();
+    isPowerCycleRunning = false;
+  }
+
+  function disableStartButton() {
+    if (startCycleBtn) startCycleBtn.disabled = true;
+    if (stopCycleBtn) stopCycleBtn.disabled = false;
+    startTime = Date.now();
+    timerInterval = setInterval(updateElapsedTime, 1000);
+    isPowerCycleRunning = true;
+    startStatusPolling();
+  }
+
+  // ── 状态轮询 ─────────────────────────────────────────────────
+  function startStatusPolling() {
+    stopStatusPolling();
+    statusPollTimer = setInterval(async function() {
+      if (!isPowerCycleRunning) { stopStatusPolling(); return; }
+      if (!currentTaskId) return;
+      try {
+        var resp = await fetch("/test/power-cycle/status");
+        var json = await resp.json().catch(function() { return null; });
+        if (!json || !json.task) return;
+        var task = json.task;
+        if (task.status === "running" || task.status === "queued") {
+          var p = Number(task.progress || 0);
+          var msg = task.message || "Running";
+          setProgress(p, msg);
+          if (task.current_cycle !== undefined && task.current_cycle !== null) {
+            document.getElementById("currentCycle").textContent = task.current_cycle;
+          }
+          if (task.current_status) {
+            var statusEl = document.getElementById("currentStatus");
+            statusEl.textContent = task.current_status;
+            statusEl.className = "data-value data-value--status" + (task.current_status === "OFF" ? " off" : "");
+          }
+          var measuredMatch = msg.match(/measured=([\d.]+)V/);
+          if (measuredMatch) {
+            document.getElementById("measuredVoltage").textContent = parseFloat(measuredMatch[1]).toFixed(2) + "V";
+          }
+        } else if (task.status === "completed" || task.status === "failed" || task.status === "stopped") {
+          isPowerCycleRunning = false;
+          stopStatusPolling();
+          if (task.status === "completed") {
+            setProgress(1.0, "Completed");
+          } else {
+            setProgress(Number(task.progress || 0), task.message || task.status);
+          }
+          enableStartButton();
+        }
+      } catch (e) { /* ignore polling errors */ }
+    }, 2000);
+  }
+
+  function stopStatusPolling() {
+    if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
+  }
+
+  function updateElapsedTime() {
+    if (!startTime) return;
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    document.getElementById("elapsedTime").textContent =
+      mins > 0 ? mins + "m " + secs + "s" : secs + "s";
+  }
+
+  // ── DOM 事件绑定 ──────────────────────────────────────────────
+  window.addEventListener("DOMContentLoaded", function() {
+
+    // BIN 折叠区
+    const toggle = document.getElementById("binCardToggle");
+    const body = document.getElementById("binCardBody");
+    const arrow = document.getElementById("binCardArrow");
+    if (toggle && body) {
+      toggle.addEventListener("click", function() {
+        const open = body.style.display !== "none";
+        body.style.display = open ? "none" : "";
+        if (arrow) arrow.style.transform = open ? "" : "rotate(-90deg)";
+      });
+      toggle.addEventListener("keydown", function(e) {
+        if (e.key === "Enter" || e.key === " ") toggle.click();
+      });
+    }
+
+    // 预设按钮
+    document.querySelectorAll(".preset-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        const cycles = this.getAttribute("data-cycles");
+        const on = this.getAttribute("data-on");
+        const off = this.getAttribute("data-off");
+        if (cycleCount) cycleCount.value = cycles;
+        if (onTime) onTime.value = on;
+        if (offTime) offTime.value = off;
+        addLog("[INFO] 已应用预设: " + cycles + "次, 开" + on + "s, 关" + off + "s");
+      });
+    });
+
+    // 刷新电源
+    if (refreshPortsBtn) {
+      refreshPortsBtn.addEventListener("click", function() {
+        addLog("[INFO] 正在刷新设备列表...");
+        loadVisaDevices();
+      });
+    }
+
+    // 读取参考 BIN（上下电前）
+    if (document.getElementById("readBinBeforeBtn")) {
+      document.getElementById("readBinBeforeBtn").addEventListener("click", function() {
+        readFlash("binBeforePath", "before").then(function(path) {
+          if (path) binBeforePath = path;
+        });
+      });
+    }
+
+    // 读取当前 BIN（上下电后）
+    if (document.getElementById("readBinAfterBtn")) {
+      document.getElementById("readBinAfterBtn").addEventListener("click", function() {
+        readFlash("binAfterPath", "after");
+      });
+    }
+
+    // 对比 BIN
+    if (document.getElementById("compareBinBtn")) {
+      document.getElementById("compareBinBtn").addEventListener("click", compareBin);
+    }
+
+    // 下载 CSV
+    if (document.getElementById("downloadBinCsvBtn")) {
+      document.getElementById("downloadBinCsvBtn").addEventListener("click", function() {
+        if (lastBinCsvPath) {
+          window.open("/test/download?path=" + encodeURIComponent(lastBinCsvPath), "_blank");
+        }
+      });
+    }
+
+    // 烧录固件
+    if (document.getElementById("burnFirmwareBtn")) {
+      document.getElementById("burnFirmwareBtn").addEventListener("click", burnFirmware);
+    }
+
+    // 开始测试
+    if (startCycleBtn) {
+      startCycleBtn.addEventListener("click", async function() {
+        const power = powerAddress?.value;
+        const voltage = parseFloat(targetVoltage?.value);
+        const cycles = parseInt(cycleCount?.value);
+        const on = parseFloat(onTime?.value);
+        const off = parseFloat(offTime?.value);
+
+        if (!power) { alert("请选择电源设备"); return; }
+        if (isNaN(voltage) || voltage < 0 || voltage > 24) { alert("请输入有效电压 (0-24V)"); return; }
+        if (isNaN(cycles) || cycles < 1) { alert("请输入有效开关次数"); return; }
+
+        disableStartButton();
+        setProgress(0, "Starting...");
+
+        try {
+          const json = await postJson("/test/power-cycle/start", {
+            voltage: voltage,
+            cycle_count: cycles,
+            on_time_s: on,
+            off_time_s: off,
+            power_address: power,
+          });
+          currentTaskId = json?.task?.task_id || null;
+          addLog("[INFO] 上下电测试已启动, task_id=" + currentTaskId);
+          document.getElementById("totalCycles").textContent = cycles;
+          document.getElementById("currentCycle").textContent = "0";
+          document.getElementById("currentStatus").textContent = "-";
+          document.getElementById("currentVoltage").textContent = voltage + "V";
+          document.getElementById("measuredVoltage").textContent = "-";
+        } catch (e) {
+          addLog("[ERROR] 启动失败: " + (e && e.message || e));
+          setProgress(0, "Idle");
+          enableStartButton();
+        }
+      });
+    }
+
+    // 停止测试
+    if (stopCycleBtn) {
+      stopCycleBtn.addEventListener("click", async function() {
+        if (!currentTaskId) { enableStartButton(); return; }
+        try {
+          stopCycleBtn.disabled = true;
+          await postJson("/test/power-cycle/stop", { task_id: currentTaskId });
+          addLog("[INFO] stop requested, task_id=" + currentTaskId);
+        } catch (e) {
+          addLog("[ERROR] stop failed: " + (e && e.message || e));
+          enableStartButton();
+        }
+      });
+    }
+
+    // 清空
+    if (clearDataBtn) {
+      clearDataBtn.addEventListener("click", function() {
+        document.getElementById("currentCycle").textContent = "-";
+        document.getElementById("currentStatus").textContent = "-";
+        document.getElementById("measuredVoltage").textContent = "-";
+        document.getElementById("elapsedTime").textContent = "-";
+        addLog("[INFO] 数据已清空");
+      });
+    }
+
+    // Socket.IO
+    function initSocketIO() {
+      if (typeof io === "function") {
+        const socket = io();
+        socket.on("connect", function() {
+          addLog("[INFO] Socket.IO 日志连接已建立");
+        });
+        socket.on("disconnect", function() {
+          addLog("[WARN] Socket.IO 连接已断开");
+        });
+        socket.on("log_message", function(data) {
+          if (!data?.message) return;
+          const line = "[" + (data?.timestamp || "--:--:--") + "] " + (data?.test_type || "hub") + " " + (data?.message || "").trim();
+          addLog(line);
+        });
+        socket.on("test_progress", function(data) {
+          if (data?.test_type !== "power_cycle") return;
+          setProgress(Number(data?.progress || 0), data?.message || "Running");
+          if (Number(data?.progress || 0) >= 1.0) enableStartButton();
+        });
+        socket.on("test_completed", function(data) {
+          if (data?.test_type !== "power_cycle") return;
+          addLog("[INFO] 测试完成! 结果: " + (data?.filename || ""));
+          setProgress(1.0, "Completed");
+          enableStartButton();
+          document.getElementById("currentStatus").textContent = "完成";
+        });
+      } else {
+        setTimeout(initSocketIO, 100);
+        return;
+      }
+      // 初始化设备
+      loadChipList();
+      loadVisaDevices();
+      setTimeout(checkJLink, 500);
+    }
+
+    initSocketIO();
+  });
+})();
+</script>
+{% endblock %}

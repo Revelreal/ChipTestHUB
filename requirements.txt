@@ -1,0 +1,23 @@
+# 目标：Windows 10/11 + Python 3.8+ 可直接安装运行（无 Node.js）
+
+# Web 基础
+Flask==2.3.3
+Werkzeug==2.3.7
+Flask-Cors==4.0.0
+
+# 实时通信（Socket.IO）
+Flask-SocketIO==5.3.6
+python-socketio==5.10.0
+python-engineio==4.8.0
+
+# 硬件/通讯
+pyserial==3.5
+pyvisa==1.13.0
+pyvisa-py==0.7.0
+crcmod==1.7
+
+# 通用工具
+numpy==1.24.4
+psutil==5.9.8
+colorama==0.4.6
+

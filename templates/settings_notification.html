@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}通知设置 - Chip Test HUB{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title-row">
+    <h1 class="page-title">
+      <svg class="icon" style="width:20px;height:20px;margin-right:8px;"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bell"></use></svg>
+      通知设置
+    </h1>
+    <div class="page-meta">
+      <span class="chip chip--accent">全局通知</span>
+    </div>
+  </div>
+  <p class="page-desc">配置邮件通知渠道。任务完成/失败时自动推送测试结果。</p>
+</div>
+
+<div class="settings-page">
+  <!-- Email 配置 -->
+  <div class="card">
+    <div class="card-title">
+      <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-mail"></use></svg>
+      <span>邮件通知</span>
+      <label class="toggle-wrap" style="margin-left: auto;">
+        <input type="checkbox" id="emailEnabled" />
+        <span class="toggle"></span>
+      </label>
+    </div>
+    <div class="card-form" id="emailForm">
+      <div class="form-row">
+        <label class="field">
+          <span class="field-label">SMTP 服务器</span>
+          <input class="input" id="smtpHost" type="text" placeholder="smtp.gmail.com" />
+        </label>
+        <label class="field" style="max-width: 120px;">
+          <span class="field-label">端口</span>
+          <input class="input" id="smtpPort" type="number" value="465" min="1" max="65535" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="field">
+          <span class="field-label">发件人邮箱</span>
+          <input class="input" id="fromEmail" type="email" placeholder="your@email.com" />
+        </label>
+        <label class="field">
+          <span class="field-label">收件人邮箱</span>
+          <input class="input" id="toEmail" type="email" placeholder="receiver@email.com" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="field">
+          <span class="field-label">授权码 / API Key</span>
+          <input class="input" id="apiKey" type="password" placeholder="请输入邮箱授权码" />
+        </label>
+      </div>
+      <div class="form-hint">
+        <span class="hint-text">请使用邮箱的 <b>授权码</b> 而非登录密码。QQ/网易邮箱均支持在设置中生成授权码。</span>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--primary" id="saveEmailBtn" type="button">保存邮件配置</button>
+        <button class="btn" id="testEmailBtn" type="button">发送测试邮件</button>
+      </div>
+      <div class="form-result" id="emailResult"></div>
+    </div>
+  </div>
+
+  <!-- Webhook 配置（预留） -->
+  <div class="card card--muted">
+    <div class="card-title">
+      <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-plug"></use></svg>
+      <span>Webhook 通知 <span class="chip" style="font-size:11px;margin-left:8px;">预留接口</span></span>
+    </div>
+    <div class="card-form">
+      <div class="form-row">
+        <label class="field">
+          <span class="field-label">Webhook URL</span>
+          <input class="input" id="webhookUrl" type="url" placeholder="https://oapi.dingtalk.com/..." disabled />
+        </label>
+      </div>
+      <div class="form-hint">
+        <span class="hint-text">Webhook 功能正在开发中，暂不支持。</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通知日志 -->
+  <div class="card">
+    <div class="card-title">
+      <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-log"></use></svg>
+      <span>通知说明</span>
+    </div>
+    <div class="card-body">
+      <p>当任意测试任务（温度扫描、上下电耐受测试等）完成后，如果通知已启用，将自动发送邮件通知。</p>
+      <ul style="margin-top:12px;padding-left:20px;line-height:1.8;">
+        <li>任务 <b>completed</b> — 完成后发送通知</li>
+        <li>任务 <b>failed</b> — 失败后发送通知</li>
+        <li>任务 <b>stopped</b> — 不发送通知</li>
+      </ul>
+      <p style="margin-top:12px;">当前支持的邮件内容：</p>
+      <ul style="margin-top:8px;padding-left:20px;line-height:1.8;">
+        <li><b>温度扫描</b>：HTML 报告 + CSV 附件 + 温度曲线图表</li>
+        <li><b>其他测试</b>：文本通知 + CSV 附件</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<style>
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  max-width: 700px;
+}
+.card-body {
+  padding: 0;
+}
+.form-hint {
+  margin-bottom: 12px;
+}
+.form-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.form-result {
+  font-size: 13px;
+  min-height: 20px;
+}
+.form-result.ok { color: #22c55e; }
+.form-result.err { color: #ef4444; }
+.toggle-wrap {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.toggle-wrap input { display: none; }
+.toggle {
+  width: 40px;
+  height: 22px;
+  background: var(--border);
+  border-radius: 11px;
+  position: relative;
+  transition: background 0.2s;
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.2s;
+}
+.toggle-wrap input:checked + .toggle {
+  background: #22c55e;
+}
+.toggle-wrap input:checked + .toggle::after {
+  transform: translateX(18px);
+}
+</style>
+
+<script>
+(function() {
+  const emailEnabled = document.getElementById("emailEnabled");
+  const emailForm = document.getElementById("emailForm");
+  const smtpHost = document.getElementById("smtpHost");
+  const smtpPort = document.getElementById("smtpPort");
+  const fromEmail = document.getElementById("fromEmail");
+  const toEmail = document.getElementById("toEmail");
+  const apiKey = document.getElementById("apiKey");
+  const saveEmailBtn = document.getElementById("saveEmailBtn");
+  const testEmailBtn = document.getElementById("testEmailBtn");
+  const emailResult = document.getElementById("emailResult");
+
+  function showResult(el, msg, isOk) {
+    el.textContent = msg;
+    el.className = "form-result " + (isOk ? "ok" : "err");
+    setTimeout(function() { el.textContent = ""; }, 5000);
+  }
+
+  function postJson(url, data) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then(function(r) { return r.json(); });
+  }
+
+  // 加载当前配置
+  fetch("/settings/api/notification")
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      if (!json.success) return;
+      var em = json.email || {};
+      emailEnabled.checked = !!em.enabled;
+      smtpHost.value = em.smtp_host || "";
+      smtpPort.value = em.smtp_port || 465;
+      fromEmail.value = em.from_email || "";
+      toEmail.value = em.to_email || "";
+      apiKey.value = em.api_key || "";
+      emailForm.style.opacity = em.enabled ? "1" : "0.5";
+    });
+
+  // 开关切换
+  emailEnabled.addEventListener("change", function() {
+    emailForm.style.opacity = emailEnabled.checked ? "1" : "0.5";
+  });
+
+  // 保存
+  saveEmailBtn.addEventListener("click", function() {
+    saveEmailBtn.disabled = true;
+    postJson("/settings/api/notification/email", {
+      enabled: emailEnabled.checked,
+      smtp_host: smtpHost.value,
+      smtp_port: parseInt(smtpPort.value) || 465,
+      from_email: fromEmail.value,
+      to_email: toEmail.value,
+      api_key: apiKey.value,
+    }).then(function(json) {
+      saveEmailBtn.disabled = false;
+      if (json.success) {
+        showResult(emailResult, "保存成功", true);
+      } else {
+        showResult(emailResult, "保存失败", false);
+      }
+    });
+  });
+
+  // 测试邮件
+  testEmailBtn.addEventListener("click", function() {
+    if (!smtpHost.value || !fromEmail.value || !toEmail.value || !apiKey.value) {
+      showResult(emailResult, "请先填写完整的邮件配置再发送测试", false);
+      return;
+    }
+    testEmailBtn.disabled = true;
+    showResult(emailResult, "正在发送...", false);
+    postJson("/settings/api/notification/test-email", {
+      smtp_host: smtpHost.value,
+      smtp_port: parseInt(smtpPort.value) || 465,
+      from_email: fromEmail.value,
+      to_email: toEmail.value,
+      api_key: apiKey.value,
+    }).then(function(json) {
+      testEmailBtn.disabled = false;
+      if (json.success) {
+        showResult(emailResult, json.message || "测试邮件发送成功", true);
+      } else {
+        showResult(emailResult, json.message || "发送失败", false);
+      }
+    }).catch(function(e) {
+      testEmailBtn.disabled = false;
+      showResult(emailResult, "发送失败: " + (e?.message || e), false);
+    });
+  });
+})();
+</script>
+{% endblock %}

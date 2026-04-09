@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}Chip Test HUB{% endblock %}
+
+{% block content %}
+  <section class="page-header">
+    <div class="kicker">HUB / Dashboard</div>
+    <div class="page-title-row">
+      <h1 class="page-title">测试能力入口</h1>
+      <div class="page-meta">
+        <span class="chip">Swiss Grid</span>
+        <span class="chip">Light/Dark</span>
+        <span class="chip chip--accent">Prototype</span>
+      </div>
+    </div>
+    <p class="page-desc">把现有脚本能力收敛成统一入口：配置 → 启动 → 实时进度/日志 → 结果导出。</p>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <div class="card-title">
+        <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-temperature"></use></svg>
+        <span>温度特性测试</span>
+      </div>
+      <div class="card-desc">-40°C ~ 150°C，温箱自动控温 + NAD 自动寻址 + 多板温度读取 + 实时折线图 + CSV 导出。</div>
+      <div class="card-tags">
+        <span class="tag">温箱</span>
+        <span class="tag">CSV</span>
+        <span class="tag">多板</span>
+      </div>
+      <div class="card-actions">
+        <a href="/temp/scan" class="btn btn--primary">详情页</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bolt"></use></svg>
+        <span>电压扫描测试</span>
+      </div>
+      <div class="card-desc">8V ~ 19V，步进扫描，多次采样记录。</div>
+      <div class="card-tags">
+        <span class="tag">电源</span>
+        <span class="tag">采样</span>
+        <span class="tag">CSV</span>
+      </div>
+      <div class="card-form" aria-label="电压扫描参数">
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">Vmin</span>
+            <input class="input" id="voltageMin" type="number" value="8" step="0.1" />
+          </label>
+          <label class="field">
+            <span class="field-label">Vmax</span>
+            <input class="input" id="voltageMax" type="number" value="19" step="0.1" />
+          </label>
+          <label class="field">
+            <span class="field-label">Step</span>
+            <input class="input" id="voltageStep" type="number" value="1" step="0.1" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">Repeat</span>
+            <input class="input" id="repeatCount" type="number" value="20" step="1" min="1" />
+          </label>
+          <label class="field">
+            <span class="field-label">NAD起始</span>
+            <input class="input" id="nadStart" type="number" value="1" step="1" min="1" max="63" />
+          </label>
+          <label class="field">
+            <span class="field-label">设备数量</span>
+            <input class="input" id="deviceNum" type="number" value="1" step="1" min="1" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">串口(LIN)</span>
+            <select class="input" id="gatewayPort">
+              <option value="">加载中...</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">电源(VISA)</span>
+            <select class="input" id="powerAddress">
+              <option value="">加载中...</option>
+            </select>
+          </label>
+          <label class="field" style="align-self: center;">
+            <button class="btn" id="refreshPortsBtn" type="button">🔄 刷新</button>
+          </label>
+        </div>
+      </div>
+      <div class="card-progress">
+        <div class="progress-bar" aria-label="电压扫描进度">
+          <div class="progress-fill" id="voltageProgressFill" style="width:0%"></div>
+        </div>
+        <div class="progress-text" id="voltageProgressText">Idle</div>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn--primary" id="voltageStartBtn" type="button">启动</button>
+        <button class="btn" id="voltageStopBtn" type="button" disabled>停止</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bolt"></use></svg>
+        <span>NAD 地址扫描</span>
+      </div>
+      <div class="card-desc">扫描 LIN 总线上的设备 NAD 地址 (1-15)</div>
+      <div class="card-content">
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">串口(LIN)</span>
+            <select class="input" id="scanGatewayPort">
+              <option value="">加载中...</option>
+            </select>
+          </label>
+          <label class="field" style="align-self: flex-end;">
+            <button class="btn" id="refreshScanPortsBtn" type="button" style="padding: 6px 12px;">🔄</button>
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">起始 NAD</span>
+            <input class="input" id="nadStartScan" type="number" value="1" min="1" max="63" />
+          </label>
+          <label class="field">
+            <span class="field-label">结束 NAD</span>
+            <input class="input" id="nadEndScan" type="number" value="15" min="1" max="63" />
+          </label>
+        </div>
+        <div class="scan-result" id="scanResult">
+          <span class="hint-text">点击扫描按钮查找设备</span>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn--primary" id="nadScanBtn" type="button">开始扫描</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bolt"></use></svg>
+        <span>电压设置测试</span>
+      </div>
+      <div class="card-desc">设置指定电压值，读取温度/VBAT/VBUCK，用于过压/欠压保护测试。</div>
+      <div class="card-tags">
+        <span class="tag">OVP</span>
+        <span class="tag">UVP</span>
+        <span class="tag">单点</span>
+      </div>
+      <div class="card-form" aria-label="电压设置参数">
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">目标电压(V)</span>
+            <input class="input" id="setVoltage" type="number" value="12" step="0.1" min="0" max="24" />
+          </label>
+          <label class="field">
+            <span class="field-label">NAD</span>
+            <input class="input" id="setNad" type="number" value="1" min="1" max="63" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">串口(LIN)</span>
+            <select class="input" id="setGatewayPort">
+              <option value="">加载中...</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">电源(VISA)</span>
+            <select class="input" id="setPowerAddress">
+              <option value="">加载中...</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="card-actions">
+        <a href="/voltage/set" class="btn">详情页</a>
+        <button class="btn btn--primary" id="quickSetBtn" type="button">快速设置</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-plug"></use></svg>
+        <span>上下电耐受测试</span>
+      </div>
+      <div class="card-desc">对ITECH电源进行循环开关控制，用于验证芯片在反复上下电后BIN是否被改变、功能是否正常。</div>
+      <div class="card-tags">
+        <span class="tag">电源循环</span>
+        <span class="tag">BIN验证</span>
+        <span class="tag">可靠性</span>
+      </div>
+      <div class="card-actions">
+        <a href="/power/cycle" class="btn btn--primary">详情页</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-plug"></use></svg>
+        <span>LIN 通讯测试</span>
+      </div>
+      <div class="card-desc">NAD 管理、通讯可靠性、诊断读写。</div>
+      <div class="card-tags">
+        <span class="tag">网关</span>
+        <span class="tag">UDS</span>
+        <span class="tag">日志</span>
+      </div>
+      <div class="card-actions">
+        <button class="btn" disabled>配置</button>
+        <button class="btn btn--primary" disabled>启动</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bulb"></use></svg>
+        <span>LED 参数测试</span>
+      </div>
+      <div class="card-desc">色坐标、亮度、温度、电压等参数采集。</div>
+      <div class="card-tags">
+        <span class="tag">参数</span>
+        <span class="tag">PN 电压</span>
+        <span class="tag">汇总</span>
+      </div>
+      <div class="card-actions">
+        <button class="btn" disabled>配置</button>
+        <button class="btn btn--primary" disabled>启动</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-title">
+      <span>电压结果</span>
+      <div class="result-tabs">
+        <button class="result-tab active" data-type="scan">SCAN</button>
+        <button class="result-tab" data-type="set">SET</button>
+      </div>
+      <button class="btn btn--sm" id="openResultsFolderBtn" type="button">📂 打开结果文件夹</button>
+    </div>
+    <div class="panel-body" id="voltageResultsPanel">
+      <div class="result-files" id="resultFilesList">
+        <div class="hint-text" id="loadingFilesHint">加载中...</div>
+      </div>
+      <div class="result-item" id="latestVoltageResult" style="display: none;">
+        <div class="result-header">
+          <span class="result-title" id="resultTitle">电压扫描测试</span>
+          <span class="result-time" id="resultTime"></span>
+        </div>
+        <div class="result-path" id="resultPath"></div>
+        <div class="result-actions">
+          <button class="btn btn--sm" id="downloadResultBtn" type="button">📥 下载 CSV</button>
+          <button class="btn btn--sm" id="copyPathBtn" type="button">📋 复制路径</button>
+        </div>
+      </div>
+      <div class="hint-text" id="noResultHint" style="display:none;">暂无测试结果</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-title">
+      <span>实时日志</span>
+      <button class="btn btn--sm" id="clearLogBtn" type="button">🗑️ 清空</button>
+    </div>
+    <div class="panel-body" id="logBox">
+      <div class="log-line">HUB 已启动。下一步：封装 /test/* API + Socket.IO 推送进度与日志。</div>
+    </div>
+  </section>
+{% endblock %}
+

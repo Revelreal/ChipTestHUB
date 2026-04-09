@@ -1,0 +1,786 @@
+{% extends "base.html" %}
+
+{% block title %}温度扫描测试 - Chip Test HUB{% endblock %}
+
+{% block content %}
+  <section class="page-header">
+    <div class="kicker">HUB / 温度扫描</div>
+    <div class="page-title-row">
+      <h1 class="page-title">温度特性测试</h1>
+      <div class="page-meta">
+        <span class="chip">温箱</span>
+        <span class="chip">CSV</span>
+        <span class="chip chip--accent">-40~150°C</span>
+      </div>
+    </div>
+    <p class="page-desc">温箱自动控温 + NAD 自动寻址 + 多板温度读取 + 实时折线图 + CSV 导出。</p>
+  </section>
+
+  <section class="grid" style="grid-template-columns: 1fr 1fr;">
+    <!-- 温度扫描配置卡片 -->
+    <div class="card">
+      <div class="card-title">
+        <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-temperature"></use></svg>
+        <span>温箱温度扫描</span>
+      </div>
+      <div class="card-desc">自定义温度范围与步进，保温稳定后读取数据，支持多板 NAD 自动寻址。</div>
+      <div class="card-tags">
+        <span class="tag">温箱</span>
+        <span class="tag">CSV</span>
+        <span class="tag">多板</span>
+      </div>
+      <div class="card-form" aria-label="温度扫描参数">
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">LIN 网关串口</span>
+            <select class="input" id="gatewayPort">
+              <option value="">-- 选择串口 --</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">温箱串口</span>
+            <select class="input" id="chamberCom">
+              <option value="">-- 选择串口 --</option>
+            </select>
+          </label>
+          <label class="field" style="align-self: flex-end;">
+            <button class="btn" id="refreshPortsBtn" type="button">🔄 刷新</button>
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">起始温度 (°C)</span>
+            <input class="input" id="tempStart" type="number" value="-40" min="-70" max="200" />
+          </label>
+          <label class="field">
+            <span class="field-label">终止温度 (°C)</span>
+            <input class="input" id="tempEnd" type="number" value="150" min="-70" max="200" />
+          </label>
+          <label class="field">
+            <span class="field-label">温度步进 (°C)</span>
+            <input class="input" id="tempStep" type="number" value="10" min="1" max="50" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">NAD 起始</span>
+            <input class="input" id="nadStart" type="number" value="1" min="1" max="63" />
+          </label>
+          <label class="field">
+            <span class="field-label">设备数量</span>
+            <input class="input" id="deviceCount" type="number" value="5" min="1" max="20" />
+          </label>
+          <label class="field">
+            <span class="field-label">保温时间 (s)</span>
+            <input class="input" id="soakTime" type="number" value="30" min="5" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">每点读取次数</span>
+            <input class="input" id="readCount" type="number" value="10" min="1" />
+          </label>
+        </div>
+        <div class="form-row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
+          <div class="form-row-label" style="font-size:11px;color:var(--muted);margin-bottom:4px;">📧 邮件推送（任务完成后自动发送）</div>
+          <label class="field">
+            <span class="field-label">发件邮箱（机器人）</span>
+            <input class="input" id="emailFrom" type="email" value="laoliudeyouxiangqw@qq.com" placeholder="robot@qq.com" />
+          </label>
+          <label class="field">
+            <span class="field-label">收件邮箱</span>
+            <input class="input" id="emailTo" type="email" value="laoliudeyouxiangqw@qq.com" placeholder="target@email.com" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">SMTP 主机</span>
+            <input class="input" id="smtpHost" type="text" value="smtp.qq.com" placeholder="smtp.qq.com" />
+          </label>
+          <label class="field">
+            <span class="field-label">SMTP 端口</span>
+            <input class="input" id="smtpPort" type="number" value="587" placeholder="587" />
+          </label>
+          <label class="field">
+            <span class="field-label">API 密钥（授权码）</span>
+            <input class="input" id="emailApiKey" type="password" value="rrxlutoaflsmjfce" placeholder="授权码" />
+          </label>
+        </div>
+      </div>
+      <div class="card-progress">
+        <div class="progress-bar">
+          <div class="progress-fill" id="tempProgressFill" style="width:0%"></div>
+        </div>
+        <span class="progress-text" id="tempProgressText">Idle</span>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn--primary" id="tempStartBtn" type="button">▶ 启动测试</button>
+        <button class="btn" id="tempStopBtn" type="button" disabled>⏹ 停止</button>
+      </div>
+    </div>
+
+    <!-- NAD 扫描卡片 -->
+    <div class="card">
+      <div class="card-title">
+        <svg class="icon card-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-plug"></use></svg>
+        <span>NAD 地址扫描</span>
+      </div>
+      <div class="card-desc">扫描 LIN 总线上的设备 NAD 地址 (1-15)，自动识别已连接的板子。</div>
+      <div class="card-content">
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">LIN 网关串口</span>
+            <select class="input" id="scanGatewayPort">
+              <option value="">-- 选择串口 --</option>
+            </select>
+          </label>
+        </div>
+        <div class="scan-result" id="scanResult">
+          <span class="hint-text">点击扫描按钮查找设备</span>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn--primary" id="nadScanBtn" type="button">🔍 开始扫描</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 实时折线图 -->
+  <section class="panel">
+    <div class="panel-title">
+      <span>📈 实时温度曲线</span>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn--sm" id="refreshChartBtn" type="button">🔄 刷新图表</button>
+        <button class="btn btn--sm" id="openResultsFolderBtn" type="button">📂 打开结果文件夹</button>
+      </div>
+    </div>
+    <div class="panel-body" style="max-height: none; padding: 14px 16px 8px;">
+      <div class="temp-charts-grid" id="tempChartsContainer">
+        <!-- 动态创建图表 -->
+      </div>
+    </div>
+  </section>
+
+  <!-- 日志 -->
+  <section class="panel">
+    <div class="panel-title">
+      <span>📋 实时日志</span>
+      <button class="btn btn--sm" id="clearLogBtn" type="button">🗑️ 清空</button>
+    </div>
+    <div class="panel-body" id="logBox">
+      <div class="log-line">Chip Test HUB 温度测试已就绪。请选择串口后启动测试。</div>
+    </div>
+  </section>
+
+<style>
+.temp-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 16px;
+}
+.temp-chart-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.temp-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.temp-chart-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.temp-chart-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: #22c55e;
+}
+.temp-chart-container {
+  height: 180px;
+}
+</style>
+
+<script>
+(() => {
+  const logBox = document.getElementById("logBox");
+  let socket = null;
+  let currentTaskId = null;
+  let isTempScanRunning = false;
+  let chartInstances = {};
+  let latestData = {};
+  let nadList = [1, 2, 3, 4, 5];
+  let statusPollTimer = null;
+
+  const LS_NAD_LIST = "temp_test_nad_list";
+  const LS_CHART_DATA = "temp_test_chart_data";
+
+  function addLog(line) {
+    if (!logBox) return;
+    const div = document.createElement("div");
+    div.className = "log-line";
+    div.textContent = line;
+    logBox.appendChild(div);
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  async function loadDevices() {
+    try {
+      const resp = await fetch("/test/ports");
+      const json = await resp.json().catch(() => ({ success: false, ports: [] }));
+      const ports = json.ports || [];
+
+      const gatewayPortSelect = document.getElementById("gatewayPort");
+      const chamberComSelect = document.getElementById("chamberCom");
+
+      [gatewayPortSelect, chamberComSelect].forEach(sel => {
+        if (!sel) return;
+        sel.innerHTML = "";
+        const def = document.createElement("option");
+        def.value = "";
+        def.textContent = "-- 选择串口 --";
+        sel.appendChild(def);
+
+        if (ports.length > 0) {
+          ports.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.port;
+            opt.textContent = `${p.port} - ${p.description || p.name || "未知设备"}`;
+            sel.appendChild(opt);
+          });
+        } else {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = "未找到串口设备";
+          sel.appendChild(opt);
+        }
+      });
+
+      addLog(`[INFO] 已加载 ${ports.length} 个串口`);
+    } catch (e) {
+      addLog(`[ERROR] 加载设备列表失败: ${e?.message || e}`);
+    }
+  }
+
+  async function postJson(url, data) {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data || {}),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok || json.success === false) {
+      throw new Error(json.message || `HTTP ${resp.status}`);
+    }
+    return json;
+  }
+
+  const tempProgressFill = document.getElementById("tempProgressFill");
+  const tempProgressText = document.getElementById("tempProgressText");
+  function setTempProgress(p, msg) {
+    const pct = Math.max(0, Math.min(100, Math.round(p * 100)));
+    if (tempProgressFill) tempProgressFill.style.width = `${pct}%`;
+    if (tempProgressText) tempProgressText.textContent = msg || `${pct}%`;
+  }
+
+  function persistState() {
+    try {
+      localStorage.setItem(LS_NAD_LIST, JSON.stringify(nadList));
+      localStorage.setItem(LS_CHART_DATA, JSON.stringify(latestData));
+    } catch (e) {}
+  }
+
+  function restoreState() {
+    try {
+      const savedNads = localStorage.getItem(LS_NAD_LIST);
+      if (savedNads) {
+        try { nadList = JSON.parse(savedNads); } catch (e) {}
+      }
+      const savedData = localStorage.getItem(LS_CHART_DATA);
+      if (savedData) {
+        try { latestData = JSON.parse(savedData); } catch (e) {}
+      }
+    } catch (e) {}
+  }
+
+  function clearPersistedState() {
+    try {
+      localStorage.removeItem(LS_CHART_DATA);
+    } catch (e) {}
+  }
+
+  // NAD Scan
+  const nadScanBtn = document.getElementById("nadScanBtn");
+  const scanResult = document.getElementById("scanResult");
+  const scanGatewayPort = document.getElementById("scanGatewayPort");
+
+  function loadScanPorts() {
+    fetch("/test/ports")
+      .then(r => r.json())
+      .then(data => {
+        if (!scanGatewayPort) return;
+        scanGatewayPort.innerHTML = "";
+        const def = document.createElement("option");
+        def.value = "";
+        def.textContent = "-- 选择串口 --";
+        scanGatewayPort.appendChild(def);
+
+        if (data.success && data.ports?.length > 0) {
+          data.ports.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.port;
+            opt.textContent = `${p.port} - ${p.description || p.name || "未知设备"}`;
+            scanGatewayPort.appendChild(opt);
+          });
+        }
+      })
+      .catch(() => {});
+  }
+
+  if (nadScanBtn && scanResult) {
+    nadScanBtn.addEventListener("click", async () => {
+      const port = scanGatewayPort?.value;
+      if (!port) {
+        scanResult.innerHTML = '<span class="device-not-found">请先选择 LIN 网关串口</span>';
+        return;
+      }
+
+      nadScanBtn.disabled = true;
+      nadScanBtn.textContent = "扫描中...";
+      scanResult.innerHTML = '<span class="hint-text">正在扫描 NAD 1-15...</span>';
+
+      try {
+        const resp = await postJson("/test/nad/scan", {
+          gateway_port: port,
+          gateway_baudrate: 115200,
+          nad_start: 1,
+          nad_end: 15,
+        });
+
+        if (resp.success) {
+          if (resp.found_devices && resp.found_devices.length > 0) {
+            let html = "";
+            resp.found_devices.forEach(dev => {
+              html += `
+                <div class="device-item">
+                  <div class="device-header">
+                    <span class="device-nad">NAD=${dev.nad}</span>
+                    <span class="device-status">✓ 在线</span>
+                  </div>
+                  <div class="device-details">
+                    <span>VBAT: ${((dev.vbat || 0) / 1000).toFixed(2)}V</span>
+                    <span>Temp: ${dev.temp}°C</span>
+                    <span>LED: ${dev.led_index}</span>
+                  </div>
+                </div>`;
+            });
+            scanResult.innerHTML = html;
+
+            nadList = resp.found_devices.map(d => d.nad);
+            if (document.getElementById("nadStart")) {
+              document.getElementById("nadStart").value = nadList[0];
+              document.getElementById("deviceCount").value = nadList.length;
+            }
+            persistState();
+            initCharts();
+          } else {
+            scanResult.innerHTML = '<span class="device-not-found">未找到任何设备，请检查连接</span>';
+          }
+        } else {
+          scanResult.innerHTML = `<span class="device-not-found">错误: ${resp.message}</span>`;
+        }
+      } catch (e) {
+        scanResult.innerHTML = `<span class="device-not-found">扫描失败: ${e?.message || e}</span>`;
+      } finally {
+        nadScanBtn.disabled = false;
+        nadScanBtn.textContent = "开始扫描";
+      }
+    });
+  }
+
+  // Status Polling
+  function startStatusPolling() {
+    stopStatusPolling();
+    statusPollTimer = setInterval(async () => {
+      if (!isTempScanRunning || !currentTaskId) {
+        stopStatusPolling();
+        return;
+      }
+      try {
+        const resp = await fetch("/test/temp/status");
+        const json = await resp.json().catch(() => null);
+        if (!json || !json.task) return;
+        const task = json.task;
+        if (task.status === "running" || task.status === "queued") {
+          const p = Number(task.progress || 0);
+          const msg = task.message || "Running";
+          setTempProgress(p, msg);
+        } else if (task.status === "completed" || task.status === "failed" || task.status === "stopped") {
+          isTempScanRunning = false;
+          persistState();
+          stopStatusPolling();
+          if (task.status === "completed") {
+            setTempProgress(1.0, "Completed");
+          } else {
+            setTempProgress(Number(task.progress || 0), task.message || task.status);
+          }
+          if (tempStartBtn) tempStartBtn.disabled = false;
+          if (tempStopBtn) tempStopBtn.disabled = true;
+        }
+      } catch (e) {}
+    }, 2000);
+  }
+
+  function stopStatusPolling() {
+    if (statusPollTimer) {
+      clearInterval(statusPollTimer);
+      statusPollTimer = null;
+    }
+  }
+
+  // Test Start/Stop
+  const tempStartBtn = document.getElementById("tempStartBtn");
+  const tempStopBtn = document.getElementById("tempStopBtn");
+  const deviceCountEl = document.getElementById("deviceCount");
+
+  if (tempStartBtn) {
+    tempStartBtn.addEventListener("click", async () => {
+      const gatewayPort = document.getElementById("gatewayPort")?.value || "";
+      const chamberCom = document.getElementById("chamberCom")?.value || "";
+
+      if (!gatewayPort) { alert("请选择 LIN 网关串口"); return; }
+      if (!chamberCom) { alert("请选择温箱串口"); return; }
+
+      const nadStart = parseInt(document.getElementById("nadStart")?.value || 1);
+      const deviceCount = parseInt(deviceCountEl?.value || 5);
+      nadList = Array.from({ length: deviceCount }, (_, i) => nadStart + i);
+
+      const payload = {
+        gateway_port: gatewayPort,
+        chamber_com: chamberCom,
+        temp_start: parseInt(document.getElementById("tempStart")?.value || -40),
+        temp_end: parseInt(document.getElementById("tempEnd")?.value || 150),
+        temp_step: parseInt(document.getElementById("tempStep")?.value || 10),
+        nad_start: nadStart,
+        device_count: deviceCount,
+        soak_time: parseInt(document.getElementById("soakTime")?.value || 30),
+        read_count: parseInt(document.getElementById("readCount")?.value || 10),
+        email_from: document.getElementById("emailFrom")?.value || "",
+        email_to: document.getElementById("emailTo")?.value || "",
+        email_api_key: document.getElementById("emailApiKey")?.value || "",
+        smtp_host: document.getElementById("smtpHost")?.value || "smtp.qq.com",
+        smtp_port: parseInt(document.getElementById("smtpPort")?.value || 587),
+      };
+
+      tempStartBtn.disabled = true;
+      tempStopBtn.disabled = false;
+      setTempProgress(0, "Starting...");
+
+      try {
+        const json = await postJson("/test/temp/start", payload);
+        currentTaskId = json?.task?.task_id || null;
+        isTempScanRunning = !!currentTaskId;
+        addLog(`[INFO] temp_scan started task_id=${currentTaskId}`);
+        persistState();
+        initCharts();
+        startStatusPolling();
+      } catch (e) {
+        addLog(`[ERROR] start failed: ${e?.message || e}`);
+        tempStartBtn.disabled = false;
+        tempStopBtn.disabled = true;
+        setTempProgress(0, "Idle");
+      }
+    });
+  }
+
+  if (tempStopBtn) {
+    tempStopBtn.addEventListener("click", async () => {
+      if (!currentTaskId) return;
+      try {
+        await postJson("/test/temp/stop", { task_id: currentTaskId });
+        addLog(`[INFO] stop requested task_id=${currentTaskId}`);
+        stopStatusPolling();
+      } catch (e) {
+        addLog(`[ERROR] stop failed: ${e?.message || e}`);
+      }
+    });
+  }
+
+  // Charts
+  const chartColors = [
+    { chip: "#00d2ff", chamber: "#ff6b6b" },
+    { chip: "#00ff88", chamber: "#ffaa00" },
+    { chip: "#a855f7", chamber: "#f97316" },
+    { chip: "#06b6d4", chamber: "#ec4899" },
+    { chip: "#84cc16", chamber: "#ef4444" },
+  ];
+
+  function initCharts(restoreExisting = true) {
+    const container = document.getElementById("tempChartsContainer");
+    if (!container) return;
+
+    if (restoreExisting && Object.keys(chartInstances).length > 0) {
+      const existingNads = Object.keys(chartInstances).map(Number).sort();
+      const sameNads = existingNads.length === nadList.length &&
+        existingNads.every((n, i) => n === nadList[i]);
+      if (sameNads) {
+        nadList.forEach(nad => {
+          if (latestData[nad] && chartInstances[nad]) {
+            const d = latestData[nad];
+            chartInstances[nad].data.labels = d.labels;
+            chartInstances[nad].data.datasets[0].data = d.chipTemps;
+            chartInstances[nad].data.datasets[1].data = d.chamberTemps;
+            chartInstances[nad].update("none");
+          } else if (!latestData[nad]) {
+            latestData[nad] = { labels: [], chipTemps: [], chamberTemps: [] };
+          }
+        });
+        return;
+      }
+    }
+
+    container.innerHTML = "";
+    chartInstances = {};
+
+    nadList.forEach((nad, idx) => {
+      const colors = chartColors[idx % chartColors.length];
+      const card = document.createElement("div");
+      card.className = "temp-chart-card";
+      card.innerHTML = `
+        <div class="temp-chart-header">
+          <span class="temp-chart-title">NAD=${nad}</span>
+          <span class="temp-chart-badge" id="badge_nad${nad}">--</span>
+        </div>
+        <div class="temp-chart-container">
+          <canvas id="chart_nad${nad}"></canvas>
+        </div>`;
+      container.appendChild(card);
+
+      if (!latestData[nad]) {
+        latestData[nad] = { labels: [], chipTemps: [], chamberTemps: [] };
+      }
+
+      const d = latestData[nad];
+      const ctx = document.getElementById(`chart_nad${nad}`).getContext("2d");
+      chartInstances[nad] = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: d.labels,
+          datasets: [
+            {
+              label: "芯片温度 (°C)",
+              data: d.chipTemps,
+              borderColor: colors.chip,
+              backgroundColor: colors.chip + "18",
+              tension: 0.3,
+              borderWidth: 2,
+              pointRadius: 1,
+            },
+            {
+              label: "温箱温度 (°C)",
+              data: d.chamberTemps,
+              borderColor: colors.chamber,
+              backgroundColor: "transparent",
+              tension: 0.3,
+              borderWidth: 2,
+              pointRadius: 1,
+              borderDash: [5, 5],
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 0 },
+          scales: {
+            x: { display: false },
+            y: {
+              title: { display: true, text: "°C", color: "#888" },
+              grid: { color: "rgba(128,128,128,0.1)" },
+              ticks: { color: "#888", font: { size: 10 } },
+            },
+          },
+          plugins: {
+            legend: {
+              display: true,
+              position: "top",
+              labels: { color: "#aaa", font: { size: 10 }, boxWidth: 12, padding: 8 },
+            },
+          },
+        },
+      });
+    });
+  }
+
+  function updateChart(nad) {
+    const chart = chartInstances[nad];
+    const d = latestData[nad];
+    const badge = document.getElementById(`badge_nad${nad}`);
+    if (!chart || !d) return;
+
+    chart.data.labels = d.labels;
+    chart.data.datasets[0].data = d.chipTemps;
+    chart.data.datasets[1].data = d.chamberTemps;
+    chart.update("none");
+
+    if (d.chipTemps.length > 0) {
+      const last = d.chipTemps[d.chipTemps.length - 1];
+      if (badge) {
+        badge.textContent = `${last}°C`;
+        badge.style.color = last > 0 ? "#22c55e" : "#3b82f6";
+      }
+    }
+    persistState();
+  }
+
+  // Socket.IO
+  function connectSocket() {
+    if (typeof io === "undefined") {
+      addLog("[WARN] Socket.IO 未加载，请刷新页面");
+      return;
+    }
+    socket = io();
+
+    socket.on("connect", () => {
+      addLog("[INFO] ✓ Socket.IO 已连接");
+      if (isTempScanRunning) startStatusPolling();
+    });
+    socket.on("disconnect", () => {
+      addLog("[WARN] ✗ Socket.IO 已断开");
+      stopStatusPolling();
+    });
+
+    socket.on("log_message", (data) => {
+      if (!data?.message) return;
+      const line = `[${data?.timestamp || "--:--:--"}] ${data?.message || ""}`;
+      addLog(line);
+    });
+
+    socket.on("test_progress", (data) => {
+      if (data?.test_type !== "temp_scan") return;
+      const p = Number(data?.progress || 0);
+      const msg = data?.message || "Running";
+      setTempProgress(p, msg);
+      if (p >= 1.0) {
+        isTempScanRunning = false;
+        clearPersistedState();
+        stopStatusPolling();
+        if (tempStartBtn) tempStartBtn.disabled = false;
+        if (tempStopBtn) tempStopBtn.disabled = true;
+      }
+    });
+
+    socket.on("temp_data", (data) => {
+      if (!latestData[data.nad]) {
+        latestData[data.nad] = { labels: [], chipTemps: [], chamberTemps: [] };
+      }
+      const d = latestData[data.nad];
+      d.labels.push(data.label || data.time);
+      d.chipTemps.push(data.chiptemp);
+      d.chamberTemps.push(data.chamber_temp || null);
+      if (d.labels.length > 300) {
+        d.labels.shift(); d.chipTemps.shift(); d.chamberTemps.shift();
+      }
+      updateChart(data.nad);
+    });
+
+    socket.on("test_completed", (data) => {
+      addLog(`[INFO] 测试完成! 文件: ${data?.filename}`);
+      setTempProgress(1.0, "Completed");
+      isTempScanRunning = false;
+      clearPersistedState();
+      stopStatusPolling();
+      if (tempStartBtn) tempStartBtn.disabled = false;
+      if (tempStopBtn) tempStopBtn.disabled = true;
+      initCharts(false);
+    });
+  }
+
+  // Results
+  const openResultsFolderBtn = document.getElementById("openResultsFolderBtn");
+  const refreshChartBtn = document.getElementById("refreshChartBtn");
+  const clearLogBtn = document.getElementById("clearLogBtn");
+
+  if (openResultsFolderBtn) {
+    openResultsFolderBtn.addEventListener("click", async () => {
+      try { await postJson("/test/results/open-folder", {}); } catch (e) {}
+    });
+  }
+
+  if (refreshChartBtn) {
+    refreshChartBtn.addEventListener("click", async () => {
+      refreshChartBtn.disabled = true;
+      refreshChartBtn.textContent = "刷新中...";
+      addLog("[INFO] 正在从CSV刷新图表...");
+      try {
+        const resp = await fetch("/test/temp/latest");
+        const json = await resp.json().catch(() => null);
+        if (!json || !json.success) {
+          addLog(`[WARN] 刷新图表失败: ${json?.message || "未知错误"}`);
+          return;
+        }
+        const nadData = json.nad_data || {};
+        const nads = Object.keys(nadData).map(Number).sort();
+        if (nads.length > 0) {
+          nadList = nads;
+          nadList.forEach(nad => {
+            if (!latestData[nad]) {
+              latestData[nad] = { labels: [], chipTemps: [], chamberTemps: [] };
+            }
+            const d = latestData[nad];
+            d.labels = [];
+            d.chipTemps = [];
+            d.chamberTemps = [];
+            nadData[nad].forEach(point => {
+              d.labels.push(String(point.target_temp));
+              d.chipTemps.push(point.chiptemp);
+              d.chamberTemps.push(point.chamber_temp ?? null);
+            });
+          });
+          persistState();
+          initCharts(true);
+          addLog(`[OK] 图表已刷新，共 ${nads.length} 个NAD`);
+        } else {
+          addLog("[WARN] CSV中无有效数据");
+        }
+      } catch (e) {
+        addLog(`[ERROR] 刷新图表异常: ${e?.message || e}`);
+      } finally {
+        refreshChartBtn.disabled = false;
+        refreshChartBtn.textContent = "🔄 刷新图表";
+      }
+    });
+  }
+  if (clearLogBtn) {
+    clearLogBtn.addEventListener("click", () => {
+      if (logBox) logBox.innerHTML = '<div class="log-line">日志已清空</div>';
+    });
+  }
+
+  // Refresh ports
+  const refreshPortsBtn = document.getElementById("refreshPortsBtn");
+  if (refreshPortsBtn) {
+    refreshPortsBtn.addEventListener("click", () => {
+      addLog("[INFO] 正在刷新设备列表...");
+      loadDevices();
+      loadScanPorts();
+    });
+  }
+
+  // Init
+  window.addEventListener("DOMContentLoaded", () => {
+    loadDevices();
+    loadScanPorts();
+    connectSocket();
+    restoreState();
+    if (nadList && nadList.length > 0) {
+      initCharts(true);
+    }
+    addLog("Chip Test HUB 温度测试已就绪。请选择串口后启动测试。");
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Chip Test HUB{% endblock %}</title>
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("chip_test_hub_theme");
+        var preferDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var theme = saved === "light" || saved === "dark" ? saved : (preferDark ? "dark" : "light");
+        document.documentElement.setAttribute("data-theme", theme);
+      } catch (e) {
+        // ignore
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg class="icon logo-icon" aria-hidden="true">
+          <use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-dashboard"></use>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">Chip Test HUB</div>
+        <div class="brand-subtitle">功能集合可视化入口（开发中）</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换明暗主题" aria-pressed="false">
+        <svg class="icon icon--toggle icon--sun" aria-hidden="true">
+          <use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-sun"></use>
+        </svg>
+        <svg class="icon icon--toggle icon--moon" aria-hidden="true">
+          <use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-moon"></use>
+        </svg>
+        <span class="theme-toggle-text" id="themeToggleText">Theme</span>
+      </button>
+      <div class="status" title="服务状态">
+        <span class="dot dot--ok" aria-hidden="true"></span>
+        <span class="status-text">服务已启动</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <nav class="nav" aria-label="功能导航">
+        <a class="nav-item is-active" href="/">
+          <svg class="icon nav-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-dashboard"></use></svg>
+          <span>Dashboard</span>
+        </a>
+        <div class="nav-divider"></div>
+        <a class="nav-item" href="/voltage/results">
+          <svg class="icon nav-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bolt"></use></svg>
+          <span>电压扫描结果</span>
+        </a>
+        <a class="nav-item" href="/voltage/set">
+          <svg class="icon nav-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bolt"></use></svg>
+          <span>电压设置</span>
+        </a>
+        <a class="nav-item" href="/temp/scan">
+          <svg class="icon nav-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-temperature"></use></svg>
+          <span>温度测试</span>
+        </a>
+        <a class="nav-item" href="javascript:void(0)">
+          <svg class="icon nav-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-plug"></use></svg>
+          <span>LIN 通讯</span>
+        </a>
+        <a class="nav-item" href="javascript:void(0)">
+          <svg class="icon nav-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bulb"></use></svg>
+          <span>LED 参数</span>
+        </a>
+        <div class="nav-divider"></div>
+        <a class="nav-item" href="javascript:void(0)">
+          <svg class="icon nav-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-desktop"></use></svg>
+          <span>设备管理</span>
+        </a>
+        <div class="nav-divider"></div>
+        <a class="nav-item" href="/settings/notification">
+          <svg class="icon nav-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bell"></use></svg>
+          <span>通知设置</span>
+        </a>
+      </nav>
+    </aside>
+    <main class="main">
+      <div class="container">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+</body>
+</html>
+

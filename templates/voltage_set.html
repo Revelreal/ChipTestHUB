@@ -1,0 +1,583 @@
+{% extends "base.html" %}
+
+{% block title %}电压设置 - Chip Test HUB{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title-row">
+    <h1 class="page-title">
+      <svg class="icon" style="width:20px;height:20px;margin-right:8px;"><use href="{{ url_for('static', filename='icons/sprite.svg') }}#i-bolt"></use></svg>
+      电压设置测试
+    </h1>
+    <div class="page-meta">
+      <span class="chip chip--accent">过压/欠压保护测试</span>
+    </div>
+  </div>
+  <p class="page-desc">设置指定电压值，读取芯片温度、VBAT、VBUCK等数据，用于测试过压保护(OVP)和欠压保护(UVP)阈值。</p>
+</div>
+
+<div class="voltage-set-page">
+  <div class="voltage-set-config">
+    <div class="config-card">
+      <div class="config-title">设备配置</div>
+      <div class="config-form">
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">串口(LIN)</span>
+            <select class="input" id="gatewayPort">
+              <option value="">加载中...</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">电源(VISA)</span>
+            <select class="input" id="powerAddress">
+              <option value="">加载中...</option>
+            </select>
+          </label>
+          <label class="field" style="align-self: flex-end;">
+            <button class="btn" id="refreshPortsBtn" type="button">🔄 刷新</button>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="config-card">
+      <div class="config-title">测试参数</div>
+      <div class="config-form">
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">目标电压(V)</span>
+            <input class="input input--large" id="targetVoltage" type="number" value="12" step="0.1" min="0" max="24" />
+          </label>
+          <label class="field">
+            <span class="field-label">NAD地址</span>
+            <input class="input" id="nadAddress" type="number" value="1" min="1" max="63" />
+          </label>
+          <label class="field">
+            <span class="field-label">读取次数</span>
+            <input class="input" id="repeatCount" type="number" value="1" min="1" max="100" />
+          </label>
+        </div>
+        <div class="form-row preset-row">
+          <span class="field-label">快速预设:</span>
+          <button class="btn btn--sm preset-btn" data-v="6">6V</button>
+          <button class="btn btn--sm preset-btn" data-v="9">9V</button>
+          <button class="btn btn--sm preset-btn" data-v="12">12V</button>
+          <button class="btn btn--sm preset-btn" data-v="15">15V</button>
+          <button class="btn btn--sm preset-btn" data-v="18">18V</button>
+          <button class="btn btn--sm preset-btn" data-v="21">21V</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="config-actions">
+      <button class="btn btn--primary btn--lg" id="startSetBtn" type="button">设置电压并读取</button>
+      <button class="btn btn--lg" id="stopSetBtn" type="button" disabled>停止</button>
+    </div>
+
+    <div class="card-progress">
+      <div class="progress-bar" aria-label="测试进度">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div class="progress-text" id="progressText">Idle</div>
+    </div>
+  </div>
+
+  <div class="voltage-set-results">
+    <div class="results-panel">
+      <div class="panel-title">
+        <span>实时数据</span>
+        <button class="btn btn--sm" id="clearDataBtn" type="button">🗑️ 清空</button>
+      </div>
+      <div class="panel-body" id="dataPanel">
+        <div class="data-grid" id="dataGrid">
+          <div class="data-item">
+            <div class="data-label">当前电压</div>
+            <div class="data-value" id="currentVoltage">-</div>
+          </div>
+          <div class="data-item">
+            <div class="data-label">VBAT</div>
+            <div class="data-value" id="currentVbat">-</div>
+          </div>
+          <div class="data-item">
+            <div class="data-label">VBUCK</div>
+            <div class="data-value" id="currentVbuck">-</div>
+          </div>
+          <div class="data-item">
+            <div class="data-label">芯片温度</div>
+            <div class="data-value data-value--temp" id="currentTemp">-</div>
+          </div>
+          <div class="data-item">
+            <div class="data-label">NAD</div>
+            <div class="data-value" id="currentNad">-</div>
+          </div>
+          <div class="data-item">
+            <div class="data-label">LED索引</div>
+            <div class="data-value" id="currentLed">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="results-panel">
+      <div class="panel-title">
+        <span>测试日志</span>
+      </div>
+      <div class="panel-body" id="logBox">
+        <div class="log-line">HUB 已启动。请配置设备参数后点击"设置电压并读取"。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.voltage-set-page {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 24px;
+  padding: 20px;
+}
+.voltage-set-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.config-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.config-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--text);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.config-form .form-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+.config-form .field {
+  flex: 1;
+}
+.input--large {
+  font-size: 18px;
+  font-weight: 600;
+  padding: 10px;
+  text-align: center;
+}
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.preset-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+.config-actions {
+  display: flex;
+  gap: 12px;
+}
+.config-actions .btn--lg {
+  flex: 1;
+  padding: 14px 20px;
+  font-size: 16px;
+}
+.voltage-set-results {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.results-panel {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.results-panel .panel-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 14px;
+}
+.results-panel .panel-body {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+}
+.data-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.data-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  text-align: center;
+}
+.data-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.data-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+}
+.data-value--temp {
+  color: #ef4444;
+}
+@media (max-width: 1024px) {
+  .voltage-set-page {
+    grid-template-columns: 1fr;
+  }
+  .data-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+</style>
+
+<script>
+(function() {
+  const logBox = document.getElementById("logBox");
+  const gatewayPort = document.getElementById("gatewayPort");
+  const powerAddress = document.getElementById("powerAddress");
+  const refreshPortsBtn = document.getElementById("refreshPortsBtn");
+  const targetVoltage = document.getElementById("targetVoltage");
+  const nadAddress = document.getElementById("nadAddress");
+  const repeatCount = document.getElementById("repeatCount");
+  const startSetBtn = document.getElementById("startSetBtn");
+  const stopSetBtn = document.getElementById("stopSetBtn");
+  const progressFill = document.getElementById("progressFill");
+  const progressText = document.getElementById("progressText");
+  const clearDataBtn = document.getElementById("clearDataBtn");
+
+  let currentTaskId = null;
+
+  function addLog(line) {
+    if (!logBox) return;
+    const div = document.createElement("div");
+    div.className = "log-line";
+    div.textContent = line;
+    logBox.appendChild(div);
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  function setProgress(p, msg) {
+    const pct = Math.max(0, Math.min(100, Math.round(p * 100)));
+    if (progressFill) progressFill.style.width = pct + "%";
+    if (progressText) progressText.textContent = msg || pct + "%";
+  }
+
+  function updateDataDisplay(data) {
+    if (data.set_voltage !== undefined) {
+      document.getElementById("currentVoltage").textContent = data.set_voltage + "V";
+    }
+    if (data.vbat_v !== undefined) {
+      const vbat_v = data.vbat_v / 1000;
+      document.getElementById("currentVbat").textContent = vbat_v.toFixed(3) + "V";
+    }
+    if (data.vbuck_v !== undefined) {
+      const vbuck_v = data.vbuck_v / 1000;
+      document.getElementById("currentVbuck").textContent = vbuck_v.toFixed(3) + "V";
+    }
+    if (data.chiptemp !== undefined) {
+      document.getElementById("currentTemp").textContent = data.chiptemp.toFixed(1) + "°C";
+    }
+    if (data.nad !== undefined) {
+      document.getElementById("currentNad").textContent = data.nad;
+    }
+    if (data.ledindex !== undefined) {
+      document.getElementById("currentLed").textContent = data.ledindex;
+    }
+  }
+
+  async function loadLatestFromCSV() {
+    try {
+      const resp = await fetch("/test/voltage-set/latest");
+      const json = await resp.json();
+      if (json.success && json.data) {
+        console.log("Loaded latest from CSV:", json.data);
+        updateDataDisplay({
+          set_voltage: json.data.set_voltage,
+          nad: json.data.nad,
+          ledindex: json.data.ledindex,
+          vbat_v: json.data.vbat_v,
+          vbuck_v: json.data.vbuck_v,
+          chiptemp: json.data.chiptemp,
+        });
+        addLog("[INFO] 已从CSV加载最新数据: VBAT=" + (json.data.vbat_v / 1000).toFixed(3) + "V");
+      }
+    } catch (e) {
+      console.log("No CSV data found or error:", e);
+    }
+  }
+
+  async function loadDevices() {
+    try {
+      const [portsResp, visaResp] = await Promise.all([
+        fetch("/test/ports").then(r => r.json().catch(() => ({success: false, ports: []}))),
+        fetch("/test/visa").then(r => r.json().catch(() => ({success: false, devices: []}))),
+      ]);
+
+      if (gatewayPort) {
+        gatewayPort.innerHTML = "";
+        const defaultOpt = document.createElement("option");
+        defaultOpt.value = "";
+        defaultOpt.textContent = "-- 选择串口 --";
+        gatewayPort.appendChild(defaultOpt);
+
+        if (portsResp.success && portsResp.ports?.length > 0) {
+          for (const p of portsResp.ports) {
+            const opt = document.createElement("option");
+            opt.value = p.port;
+            opt.textContent = p.port + " - " + (p.description || p.name || "未知设备");
+            gatewayPort.appendChild(opt);
+          }
+        } else {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = "未找到串口设备";
+          gatewayPort.appendChild(opt);
+        }
+      }
+
+      if (powerAddress) {
+        powerAddress.innerHTML = "";
+        const defaultOpt = document.createElement("option");
+        defaultOpt.value = "";
+        defaultOpt.textContent = "-- 选择电源 --";
+        powerAddress.appendChild(defaultOpt);
+
+        if (visaResp.success && visaResp.devices?.length > 0) {
+          for (const d of visaResp.devices) {
+            const opt = document.createElement("option");
+            opt.value = d.resource;
+            opt.textContent = d.resource;
+            powerAddress.appendChild(opt);
+          }
+        } else {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = "未找到 VISA 设备";
+          powerAddress.appendChild(opt);
+        }
+      }
+
+      addLog("[INFO] 已加载 " + (portsResp.ports?.length || 0) + " 个串口, " + (visaResp.devices?.length || 0) + " 个 VISA 设备");
+    } catch (e) {
+      addLog("[ERROR] 加载设备列表失败: " + (e?.message || e));
+    }
+  }
+
+  async function postJson(url, data) {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data || {}),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok || json.success === false) {
+      const msg = json.message || "HTTP " + resp.status;
+      throw new Error(msg);
+    }
+    return json;
+  }
+
+  function enableStartButton() {
+    if (startSetBtn) startSetBtn.disabled = false;
+    if (stopSetBtn) stopSetBtn.disabled = true;
+  }
+
+  function disableStartButton() {
+    if (startSetBtn) startSetBtn.disabled = true;
+    if (stopSetBtn) stopSetBtn.disabled = false;
+  }
+
+  window.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll(".preset-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        const v = this.getAttribute("data-v");
+        if (v && targetVoltage) {
+          targetVoltage.value = v;
+        }
+      });
+    });
+
+    if (refreshPortsBtn) {
+      refreshPortsBtn.addEventListener("click", function() {
+        addLog("[INFO] 正在刷新设备列表...");
+        loadDevices();
+      });
+    }
+
+    if (startSetBtn) {
+      startSetBtn.addEventListener("click", async function() {
+        const port = gatewayPort?.value;
+        const power = powerAddress?.value;
+        const voltage = parseFloat(targetVoltage?.value);
+        const nad = parseInt(nadAddress?.value || 1);
+        const repeat = parseInt(repeatCount?.value || 1);
+
+        if (!port) {
+          addLog("[ERROR] 请选择串口 (LIN网关)");
+          alert("请选择串口");
+          return;
+        }
+        if (!power) {
+          addLog("[ERROR] 请选择电源设备 (VISA)");
+          alert("请选择电源设备");
+          return;
+        }
+        if (isNaN(voltage) || voltage < 0 || voltage > 24) {
+          addLog("[ERROR] 电压值无效 (0-24V)");
+          alert("请输入有效的电压值 (0-24V)");
+          return;
+        }
+
+        disableStartButton();
+        setProgress(0, "Starting...");
+
+        try {
+          const payload = {
+            voltage: voltage,
+            nad: nad,
+            repeat_count: repeat,
+            gateway_port: port,
+            power_address: power,
+          };
+
+          addLog("[INFO] 开始设置电压: " + voltage + "V");
+
+          const json = await postJson("/test/voltage-set/start", payload);
+          currentTaskId = json?.task?.task_id || null;
+          addLog("[INFO] voltage_set started, task_id=" + currentTaskId);
+        } catch (e) {
+          addLog("[ERROR] 启动失败: " + (e?.message || e));
+          setProgress(0, "Idle");
+          enableStartButton();
+        }
+      });
+    }
+
+    if (stopSetBtn) {
+      stopSetBtn.addEventListener("click", async function() {
+        if (!currentTaskId) {
+          enableStartButton();
+          return;
+        }
+        try {
+          stopSetBtn.disabled = true;
+          await postJson("/test/voltage-set/stop", { task_id: currentTaskId });
+          addLog("[INFO] stop requested, task_id=" + currentTaskId);
+        } catch (e) {
+          addLog("[ERROR] stop failed: " + (e?.message || e));
+          enableStartButton();
+        }
+      });
+    }
+
+    if (clearDataBtn) {
+      clearDataBtn.addEventListener("click", function() {
+        document.getElementById("currentVoltage").textContent = "-";
+        document.getElementById("currentVbat").textContent = "-";
+        document.getElementById("currentVbuck").textContent = "-";
+        document.getElementById("currentTemp").textContent = "-";
+        document.getElementById("currentNad").textContent = "-";
+        document.getElementById("currentLed").textContent = "-";
+        addLog("[INFO] 数据已清空");
+      });
+    }
+
+    function initSocketIO() {
+      if (typeof io === "function") {
+        const socket = io();
+        console.log("Socket.IO initialized in voltage_set page");
+
+        socket.on("connect", function() {
+          console.log("Socket.IO connected in voltage_set page");
+          addLog("[INFO] Socket.IO 日志连接已建立");
+        });
+
+        socket.on("disconnect", function() {
+          addLog("[WARN] Socket.IO 连接已断开");
+        });
+
+        socket.on("log_message", function(data) {
+          if (!data?.message) return;
+          console.log("Received log_message:", data);
+          const line = "[" + (data?.timestamp || "--:--:--") + "] " + (data?.test_type || "hub") + " " + (data?.message || "").trim();
+          addLog(line);
+
+          if (data?.message?.includes("NAD=")) {
+            console.log("Found NAD in message, test_type:", data?.test_type);
+            const msg = data.message;
+            console.log("Full message:", msg);
+            const nadMatch = msg.match(/NAD=(\d+)/);
+            const vbatMatch = msg.match(/VBAT=(\d+)/);
+            const vbuckMatch = msg.match(/VBuck=(\d+)/);
+            const tempMatch = msg.match(/Temp=([\d.]+)/);
+            const ledMatch = msg.match(/LED=(\d+)/);
+
+            console.log("Parsed data:", { nad: nadMatch, vbat: vbatMatch, vbuck: vbuckMatch, temp: tempMatch, led: ledMatch });
+
+            if (nadMatch || vbatMatch || vbuckMatch || tempMatch) {
+              updateDataDisplay({
+                nad: nadMatch ? parseInt(nadMatch[1]) : undefined,
+                vbat_v: vbatMatch ? parseInt(vbatMatch[1]) : undefined,
+                vbuck_v: vbuckMatch ? parseInt(vbuckMatch[1]) : undefined,
+                chiptemp: tempMatch ? parseFloat(tempMatch[1]) : undefined,
+                ledindex: ledMatch ? parseInt(ledMatch[1]) : undefined,
+              });
+            }
+          }
+        });
+
+        socket.on("test_progress", function(data) {
+          if (data?.test_type !== "voltage_set") return;
+          const progress = Number(data?.progress || 0);
+          const msg = data?.message || "Running";
+          setProgress(progress, msg);
+
+          if (progress >= 1.0) {
+            enableStartButton();
+          }
+        });
+
+        socket.on("test_completed", function(data) {
+          if (data?.test_type !== "voltage_set") return;
+          addLog("[INFO] 测试完成! 结果文件: " + (data?.filename || ""));
+          setProgress(1.0, "Completed");
+          enableStartButton();
+          setTimeout(loadLatestFromCSV, 500);
+        });
+      } else {
+        console.warn("Socket.IO not loaded yet, retrying...");
+        setTimeout(initSocketIO, 100);
+        return;
+      }
+      loadDevices();
+      loadLatestFromCSV();
+      setInterval(loadLatestFromCSV, 2000);
+    }
+
+    initSocketIO();
+  });
+})();
+</script>
+{% endblock %}
